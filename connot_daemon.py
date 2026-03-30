@@ -199,6 +199,48 @@ class EventNormalizer:
 
 
 # ---------------------------------------------------------------------------
+# EventPolicy
+# ---------------------------------------------------------------------------
+
+class EventPolicy:
+    """Annotate events with KDE delivery preferences."""
+
+    PERSISTENT_SOURCES = {"rfkill", "usb_nic", "rfcomm"}
+    PERSISTENT_SOCKET_KINDS = {"burst"}
+    PERSISTENT_BLUETOOTH_KINDS = {
+        "connected",
+        "disconnected",
+        "device_added",
+        "device_removed",
+    }
+
+    @classmethod
+    def annotate(cls, event):
+        source = event["source"]
+        kind = event["kind"]
+        severity = event["severity"]
+
+        persistent = False
+        if source in cls.PERSISTENT_SOURCES:
+            persistent = True
+        elif source == "socket" and kind in cls.PERSISTENT_SOCKET_KINDS:
+            persistent = True
+        elif source == "bluetooth" and kind in cls.PERSISTENT_BLUETOOTH_KINDS:
+            persistent = True
+        elif severity == "warning" and source in {"nfc"} and kind in {"added", "removed"}:
+            persistent = True
+
+        event["delivery"] = {
+            "persistent": persistent,
+            "transient": not persistent,
+            "urgency": "critical" if severity == "warning" else "normal",
+            "expire_ms": 12000 if persistent else 5000,
+            "category": f"device.{source}" if source != "socket" else "network.inbound",
+        }
+        return event
+
+
+# ---------------------------------------------------------------------------
 # StateCache
 # ---------------------------------------------------------------------------
 
@@ -265,6 +307,7 @@ class StateCache:
                 icon=ICON_MAP.get(source, "network-server"),
                 severity="info",
             )
+            EventPolicy.annotate(agg_event)
             self._last_notified[agg_event["key"]] = agg_event["ts"]
             EventQueuePublisher.publish(agg_event)
             log(f"Burst notification: {n} events for {source}")
@@ -300,6 +343,7 @@ class ConnNotifyDaemon:
         if not self.state_cache.should_notify(event):
             return
 
+        EventPolicy.annotate(event)
         log(f"NOTIFY [{event['severity']}] {event['title']}: {event['body']}")
         EventQueuePublisher.publish(event)
 

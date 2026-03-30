@@ -12,7 +12,7 @@ The collector performs **Normalize → Deduplicate → Queue**, and the notifier
 - **Event-driven** (D-Bus signals) — zero-latency, no polling
 - **Pollers** — periodic checks at 2–5 second intervals
 
-All events flow through a unified pipeline: **Normalize → Deduplicate → Notify**.
+All events flow through a unified pipeline: **Normalize → Deduplicate → Annotate delivery → Queue → Notify**.
 
 ## Diagram
 
@@ -62,14 +62,14 @@ flowchart TB
 
 | Monitor | Source | Method | Interval | File Reference |
 |---|---|---|---|---|
-| Bluetooth | BlueZ `org.bluez` | D-Bus signals (`InterfacesAdded`, `PropertiesChanged`) | event-driven | `connot_daemon.py` L258–328 |
-| NetworkManager | `org.freedesktop.NetworkManager` | D-Bus signals (`DeviceAdded`, `StateChanged`, `PropertiesChanged`) | event-driven | `connot_daemon.py` L332–410 |
-| wpa_supplicant | `fi.w1.wpa_supplicant1` | D-Bus signals (`StateChanged`, `PropertiesChanged`) | event-driven | `connot_daemon.py` L414–453 |
-| NFC | neard `org.neard` | D-Bus signals (`InterfacesAdded/Removed`) | event-driven | `connot_daemon.py` L457–505 |
-| Inbound TCP/UDP | `ss -Htnup` / `ss -Hltnup` | subprocess polling | 2s | `connot_daemon.py` |
-| rfkill radios | `/sys/class/rfkill/` | sysfs polling | 5s | `connot_daemon.py` L597–640 |
-| RFCOMM | `/dev/rfcomm*` | glob polling | 5s | `connot_daemon.py` L644–673 |
-| USB NICs | `/sys/class/net/*/device` | sysfs polling | 5s | `connot_daemon.py` L677–720 |
+| Bluetooth | BlueZ `org.bluez` | D-Bus signals (`InterfacesAdded`, `PropertiesChanged`) | event-driven | `connot_daemon.py` |
+| NetworkManager | `org.freedesktop.NetworkManager` | D-Bus signals (`DeviceAdded`, `StateChanged`, `PropertiesChanged`) | event-driven | `connot_daemon.py` |
+| wpa_supplicant | `fi.w1.wpa_supplicant1` | D-Bus signals (`StateChanged`, `PropertiesChanged`) | event-driven | `connot_daemon.py` |
+| NFC | neard `org.neard` | D-Bus signals (`InterfacesAdded/Removed`) | event-driven | `connot_daemon.py` |
+| Inbound TCP/UDP | `ss -Htnup` / `ss -Hltnup` | subprocess polling with process metadata | 2s | `connot_daemon.py` |
+| rfkill radios | `/sys/class/rfkill/` | sysfs polling | 5s | `connot_daemon.py` |
+| RFCOMM | `/dev/rfcomm*` | glob polling | 5s | `connot_daemon.py` |
+| USB NICs | `/sys/class/net/*/device` | sysfs polling | 5s | `connot_daemon.py` |
 
 ## Anti-Spam Pipeline
 
@@ -89,8 +89,38 @@ Event → Cooldown check → Flap damping → Burst aggregation → Notification
 
 1. Collector writes one JSON event per file into `/run/connot/events`
 2. User notifier polls that directory
-3. Primary desktop notification backend: `notify-send -a "ConnNotify" -i <icon> "<title>" "<body>"`
-4. Fallback: `kdialog --passivepopup`
+3. Collector-provided delivery metadata marks events as `persistent` or `transient`
+4. Primary desktop notification backend: `notify-send -a "ConnNotify" -i <icon> "<title>" "<body>"`
+5. Fallback: `kdialog --passivepopup`
+
+## KDE Delivery Policy
+
+Persistent events are intended to remain visible in KDE history:
+
+- socket burst summaries
+- Bluetooth connect/disconnect and device appearance/removal
+- rfkill state changes
+- RFCOMM add/remove
+- USB NIC add/remove
+
+Transient events are intended to show as popups without cluttering the history:
+
+- individual socket connection events
+- Bluetooth RSSI proximity updates
+- NetworkManager property/state churn
+- wpa_supplicant state churn
+- NFC property chatter
+
+The notifier maps this policy to `notify-send` arguments such as urgency, timeout, category, and `--transient`.
+
+## Queue Semantics
+
+- queue location: `/run/connot/events`
+- format: one JSON file per normalized event
+- startup behavior: notifier baselines existing files and only delivers newer ones
+- pruning: collector periodically removes stale queue files and bounds queue growth
+
+This design avoids replaying old notifications after restart while keeping the collector and notifier loosely coupled.
 
 ## Files
 

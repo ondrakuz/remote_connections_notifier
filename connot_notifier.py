@@ -25,10 +25,20 @@ def log(msg, level="INFO"):
 
 class NotificationManager:
     @staticmethod
-    def send(title, body, icon="dialog-information"):
+    def send(title, body, icon="dialog-information", delivery=None):
+        delivery = delivery or {}
+        args = ["notify-send", "-a", "ConnNotify", "-i", icon]
+        args.extend(["-u", delivery.get("urgency", "normal")])
+        args.extend(["-t", str(delivery.get("expire_ms", 5000))])
+        category = delivery.get("category")
+        if category:
+            args.extend(["-c", category])
+        if delivery.get("transient", False):
+            args.append("--transient")
+        args.extend([title, body])
         try:
             subprocess.Popen(
-                ["notify-send", "-a", "ConnNotify", "-i", icon, title, body],
+                args,
                 stdout=subprocess.DEVNULL,
                 stderr=subprocess.DEVNULL,
             )
@@ -106,9 +116,11 @@ class EventConsumer:
                 event.get("title", "ConnNotify event"),
                 event.get("body", ""),
                 event.get("icon", "dialog-information"),
+                event.get("delivery", {}),
             )
             log(
                 f"Delivered [{event.get('severity', 'info')}] "
+                f"[{'persistent' if event.get('delivery', {}).get('persistent') else 'transient'}] "
                 f"{event.get('title', 'ConnNotify event')}: {event.get('body', '')}"
             )
 
