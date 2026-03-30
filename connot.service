@@ -1,11 +1,11 @@
 [Unit]
-Description=Outer Connection Notificator - monitors incoming connections
+Description=ConnNotify notifier - forwards collector events to KDE
 After=graphical-session.target
 Wants=dbus.socket
 
 [Service]
 Type=simple
-ExecStart=/usr/bin/env python3 %h/Projekty/Scripts/Bash/connot/connot_daemon.py
+ExecStart=/usr/bin/env python3 /opt/connot/connot_notifier.py
 Restart=on-failure
 RestartSec=5
 Environment=DISPLAY=:0

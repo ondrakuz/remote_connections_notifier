@@ -1,17 +1,17 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-# ConnNotify — launcher script for the connot_daemon.py daemon.
-# Ensures single-instance execution, dependency checks, and manages
-# the daemon lifecycle (start/stop/restart/status/foreground).
+# ConnNotify — launcher script for the user-side connot_notifier.py daemon.
+# The root collector is expected to run as a systemd system service.
+# This helper only manages the KDE notifier in the current user session.
 
 # ---------------------------------------------------------------------------
 # Resolve paths
 # ---------------------------------------------------------------------------
 
-# Directory where this script lives (used to find connot_daemon.py)
+# Directory where this script lives (used to find connot_notifier.py)
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-DAEMON_SCRIPT="$SCRIPT_DIR/connot_daemon.py"
+DAEMON_SCRIPT="$SCRIPT_DIR/connot_notifier.py"
 
 # ---------------------------------------------------------------------------
 # Environment defaults
@@ -36,7 +36,7 @@ LOG_FILE="$XDG_RUNTIME_DIR/connnotify.log"
 # ---------------------------------------------------------------------------
 
 missing=()
-for cmd in python3 notify-send ss; do
+for cmd in python3 notify-send; do
     if ! command -v "$cmd" &>/dev/null; then
         missing+=("$cmd")
     fi
@@ -81,11 +81,11 @@ do_start() {
             exit 0
         fi
 
-        echo "Starting ConnNotify daemon..."
+        echo "Starting ConnNotify notifier..."
         nohup python3 "$DAEMON_SCRIPT" >>"$LOG_FILE" 2>&1 &
         local new_pid=$!
         echo "$new_pid" > "$PID_FILE"
-        echo "Daemon started (PID $new_pid). Log: $LOG_FILE"
+        echo "Notifier started (PID $new_pid). Log: $LOG_FILE"
     ) 9>"$LOCK_FILE"
 }
 
@@ -97,7 +97,7 @@ do_stop() {
         return 0
     fi
 
-    echo "Stopping ConnNotify daemon (PID $pid)..."
+    echo "Stopping ConnNotify notifier (PID $pid)..."
     kill "$pid" 2>/dev/null || true
     # Wait briefly for graceful shutdown
     for _ in $(seq 1 10); do
@@ -121,9 +121,9 @@ do_status() {
     local pid
     pid=$(get_running_pid)
     if [[ -n "$pid" ]]; then
-        echo "ConnNotify daemon is running (PID $pid)."
+        echo "ConnNotify notifier is running (PID $pid)."
     else
-        echo "ConnNotify daemon is not running."
+        echo "ConnNotify notifier is not running."
         # Clean up stale PID file
         rm -f "$PID_FILE"
     fi
@@ -140,7 +140,7 @@ do_foreground() {
             exit 1
         fi
 
-        echo "Running ConnNotify daemon in foreground (Ctrl+C to stop)..."
+        echo "Running ConnNotify notifier in foreground (Ctrl+C to stop)..."
         python3 "$DAEMON_SCRIPT"
     ) 9>"$LOCK_FILE"
 }

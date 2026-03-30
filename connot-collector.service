@@ -1,0 +1,15 @@
+[Unit]
+Description=ConnNotify collector - monitors incoming connections as root
+After=network.target
+Wants=network.target
+
+[Service]
+Type=simple
+ExecStart=/usr/bin/env python3 /opt/connot/connot_daemon.py
+Restart=on-failure
+RestartSec=5
+RuntimeDirectory=connot
+RuntimeDirectoryMode=0755
+
+[Install]
+WantedBy=multi-user.target

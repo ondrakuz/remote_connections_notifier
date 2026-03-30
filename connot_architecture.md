@@ -2,7 +2,12 @@
 
 ## Overview
 
-The daemon uses a **GLib main loop** with two categories of monitors:
+ConnNotify now uses two cooperating processes:
+
+- **Collector** (`connot_daemon.py`) runs as root and uses a **GLib main loop** with event-driven monitors and pollers
+- **Notifier** (`connot_notifier.py`) runs in the user session and forwards queued events to KDE
+
+The collector performs **Normalize → Deduplicate → Queue**, and the notifier performs **Read queue → Notify**.
 
 - **Event-driven** (D-Bus signals) — zero-latency, no polling
 - **Pollers** — periodic checks at 2–5 second intervals
@@ -27,13 +32,16 @@ flowchart TB
         USB[USB NICs\n/sys every 5s]
     end
 
-    subgraph "Core"
+    subgraph "Collector Core"
         NORM[EventNormalizer]
         CACHE[StateCache\ncooldown + burst + flap]
-        NOTIFY[NotificationManager]
+        QUEUE[EventQueuePublisher\n/run/connot/events]
     end
 
-    KDE[KDE Plasma\npopup + panel]
+    subgraph "User Session"
+        NOTIFY[NotificationManager]
+        KDE[KDE Plasma\npopup + panel]
+    end
 
     BT --> NORM
     NM --> NORM
@@ -45,7 +53,8 @@ flowchart TB
     USB --> NORM
 
     NORM --> CACHE
-    CACHE --> NOTIFY
+    CACHE --> QUEUE
+    QUEUE --> NOTIFY
     NOTIFY --> KDE
 ```
 
@@ -57,7 +66,7 @@ flowchart TB
 | NetworkManager | `org.freedesktop.NetworkManager` | D-Bus signals (`DeviceAdded`, `StateChanged`, `PropertiesChanged`) | event-driven | `connot_daemon.py` L332–410 |
 | wpa_supplicant | `fi.w1.wpa_supplicant1` | D-Bus signals (`StateChanged`, `PropertiesChanged`) | event-driven | `connot_daemon.py` L414–453 |
 | NFC | neard `org.neard` | D-Bus signals (`InterfacesAdded/Removed`) | event-driven | `connot_daemon.py` L457–505 |
-| Inbound TCP/UDP | `ss -Htnu` / `ss -Hltnu` | subprocess polling | 2s | `connot_daemon.py` L509–593 |
+| Inbound TCP/UDP | `ss -Htnup` / `ss -Hltnup` | subprocess polling | 2s | `connot_daemon.py` |
 | rfkill radios | `/sys/class/rfkill/` | sysfs polling | 5s | `connot_daemon.py` L597–640 |
 | RFCOMM | `/dev/rfcomm*` | glob polling | 5s | `connot_daemon.py` L644–673 |
 | USB NICs | `/sys/class/net/*/device` | sysfs polling | 5s | `connot_daemon.py` L677–720 |
@@ -78,14 +87,18 @@ Event → Cooldown check → Flap damping → Burst aggregation → Notification
 
 ## Notification Path
 
-1. Primary: `notify-send -a "ConnNotify" -i <icon> "<title>" "<body>"`
-2. Fallback: `kdialog --passivepopup` (if notify-send unavailable)
+1. Collector writes one JSON event per file into `/run/connot/events`
+2. User notifier polls that directory
+3. Primary desktop notification backend: `notify-send -a "ConnNotify" -i <icon> "<title>" "<body>"`
+4. Fallback: `kdialog --passivepopup`
 
 ## Files
 
 | File | Role |
 |---|---|
-| `connot_daemon.py` | Python 3 daemon — monitors, event pipeline, notifications |
-| `connot.sh` | Bash launcher — lifecycle management, single-instance lock |
+| `connot_daemon.py` | Python 3 root collector — monitors, event pipeline, event queue writer |
+| `connot_notifier.py` | Python 3 user notifier — queue reader and KDE notification sender |
+| `connot.sh` | Bash launcher for the notifier only |
+| `connot-collector.service` | systemd system service unit |
 | `connot.service` | systemd user service unit |
-| `install.sh` | Installer for the systemd service |
+| `install.sh` | Installer for both services |

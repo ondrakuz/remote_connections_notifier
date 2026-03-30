@@ -1,6 +1,15 @@
 # Remote Connection Notificator
 
-Monitors **all incoming remote connections** on Linux and sends KDE Plasma desktop notifications.
+Monitors **incoming remote connections** on Linux and sends KDE Plasma desktop notifications.
+
+## Architecture
+
+ConnNotify now runs as two components:
+
+- **Collector** (`connot_daemon.py`) — system service running as root, gathers events and writes normalized JSON to `/run/connot/events`
+- **Notifier** (`connot_notifier.py`) — user service running in the desktop session, reads queued events and sends KDE notifications
+
+This split allows the collector to see target processes more reliably via `ss -p` while keeping notifications in the correct user session.
 
 ## What it monitors
 
@@ -10,7 +19,7 @@ Monitors **all incoming remote connections** on Linux and sends KDE Plasma deskt
 | **NetworkManager** (link up/down, Wi-Fi, Ethernet) | NM D-Bus signals | event-driven |
 | **wpa_supplicant** (Wi-Fi state transitions) | D-Bus signals | event-driven |
 | **NFC** (tag/device detected) | neard D-Bus signals | event-driven |
-| **Inbound TCP/UDP** connections | `ss` polling | 2s |
+| **Inbound TCP/UDP** connections | `ss -p` polling | 2s |
 | **rfkill** radio block/unblock | `/sys/class/rfkill` | 5s |
 | **RFCOMM** serial-over-Bluetooth | `/dev/rfcomm*` | 5s |
 | **USB network adapters** added/removed | `/sys/class/net` | 5s |
@@ -32,22 +41,24 @@ Monitors **all incoming remote connections** on Linux and sends KDE Plasma deskt
 
 ## Usage
 
-### Quick start (foreground)
+### Quick start (foreground notifier only)
 
 ```bash
 ./connot.sh fg
 ```
 
-### Daemon mode
+For end-to-end monitoring, run the collector as a system service and the notifier as a user service.
+
+### Notifier mode
 
 ```bash
 ./connot.sh start     # start in background
-./connot.sh stop      # stop daemon
+./connot.sh stop      # stop notifier
 ./connot.sh restart   # restart
 ./connot.sh status    # check if running
 ```
 
-### Systemd user service
+### Install both services
 
 ```bash
 ./install.sh            # interactive
@@ -57,6 +68,8 @@ Monitors **all incoming remote connections** on Linux and sends KDE Plasma deskt
 Then manage with:
 
 ```bash
+sudo systemctl status connot-collector.service
+journalctl -u connot-collector.service -f
 systemctl --user status connot.service
 journalctl --user -u connot.service -f
 ```
@@ -65,7 +78,9 @@ journalctl --user -u connot.service -f
 
 | File | Description |
 |---|---|
-| `connot_daemon.py` | Python 3 daemon — all monitoring and notification logic |
-| `connot.sh` | Bash launcher — lifecycle management, single-instance lock |
-| `connot.service` | systemd user unit file |
-| `install.sh` | Installs the systemd service |
+| `connot_daemon.py` | Python 3 root collector — monitors and queues normalized events |
+| `connot_notifier.py` | Python 3 user notifier — reads queue and sends KDE notifications |
+| `connot.sh` | Bash launcher for the user notifier |
+| `connot-collector.service` | systemd system unit for the collector |
+| `connot.service` | systemd user unit for the notifier |
+| `install.sh` | Installs both services and shared scripts |

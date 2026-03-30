@@ -24,10 +24,12 @@ import glob
 import ipaddress
 import json
 import os
+import re
 import signal
 import socket
 import subprocess
 import sys
+import tempfile
 import time
 
 import dbus
@@ -83,32 +85,94 @@ BURST_THRESHOLD = 3
 BURST_WINDOW = 3.0
 FLAP_COUNT = 3
 FLAP_WINDOW = 60.0
+RUN_DIR = "/run/connot"
+QUEUE_DIR = f"{RUN_DIR}/events"
+QUEUE_RETENTION_SECONDS = 3600
+QUEUE_MAX_FILES = 2048
 
 
 # ---------------------------------------------------------------------------
-# NotificationManager
+# EventQueuePublisher
 # ---------------------------------------------------------------------------
 
-class NotificationManager:
-    """Send desktop notifications via notify-send, fallback to kdialog."""
+class EventQueuePublisher:
+    """Persist normalized events for the user-side notifier."""
 
     @staticmethod
-    def send(title, body, icon="dialog-information"):
+    def ensure_queue_dir():
         try:
-            subprocess.Popen(
-                ["notify-send", "-a", "ConnNotify", "-i", icon, title, body],
-                stdout=subprocess.DEVNULL,
-                stderr=subprocess.DEVNULL,
-            )
-        except FileNotFoundError:
+            os.makedirs(QUEUE_DIR, mode=0o755, exist_ok=True)
+        except OSError as exc:
+            log(f"Failed to create queue directory {QUEUE_DIR}: {exc}", "WARN")
+            return False
+        return True
+
+    @classmethod
+    def publish(cls, event):
+        if not cls.ensure_queue_dir():
+            return
+
+        event["emitted_ts"] = time.time()
+        filename = f"{int(event['emitted_ts'] * 1000):013d}_{os.getpid()}_{time.time_ns()}.json"
+        try:
+            with tempfile.NamedTemporaryFile(
+                "w",
+                dir=QUEUE_DIR,
+                prefix=".tmp_",
+                suffix=".json",
+                delete=False,
+                encoding="utf-8",
+            ) as handle:
+                json.dump(event, handle, ensure_ascii=True)
+                handle.write("\n")
+                tmp_path = handle.name
+            os.chmod(tmp_path, 0o644)
+            os.replace(tmp_path, os.path.join(QUEUE_DIR, filename))
+        except OSError as exc:
+            log(f"Failed to publish event {event['key']}: {exc}", "WARN")
             try:
-                subprocess.Popen(
-                    ["kdialog", "--passivepopup", f"{title}\n{body}", "8"],
-                    stdout=subprocess.DEVNULL,
-                    stderr=subprocess.DEVNULL,
-                )
-            except FileNotFoundError:
-                log(f"No notification backend available: {title}: {body}", "WARN")
+                if "tmp_path" in locals():
+                    os.unlink(tmp_path)
+            except OSError:
+                pass
+
+    @classmethod
+    def prune(cls):
+        if not os.path.isdir(QUEUE_DIR):
+            return
+
+        now = time.time()
+        try:
+            entries = sorted(
+                entry for entry in os.listdir(QUEUE_DIR) if entry.endswith(".json")
+            )
+        except OSError as exc:
+            log(f"Failed to inspect queue directory {QUEUE_DIR}: {exc}", "WARN")
+            return
+
+        stale_cutoff = now - QUEUE_RETENTION_SECONDS
+        for entry in entries:
+            path = os.path.join(QUEUE_DIR, entry)
+            try:
+                stat = os.stat(path)
+            except OSError:
+                continue
+            if stat.st_mtime < stale_cutoff:
+                try:
+                    os.unlink(path)
+                except OSError:
+                    pass
+
+        overflow = max(0, len(entries) - QUEUE_MAX_FILES)
+        if overflow <= 0:
+            return
+
+        for entry in entries[:overflow]:
+            path = os.path.join(QUEUE_DIR, entry)
+            try:
+                os.unlink(path)
+            except OSError:
+                pass
 
 
 # ---------------------------------------------------------------------------
@@ -202,9 +266,7 @@ class StateCache:
                 severity="info",
             )
             self._last_notified[agg_event["key"]] = agg_event["ts"]
-            NotificationManager.send(
-                agg_event["title"], agg_event["body"], agg_event["icon"]
-            )
+            EventQueuePublisher.publish(agg_event)
             log(f"Burst notification: {n} events for {source}")
         return False  # remove timeout
 
@@ -221,7 +283,6 @@ class ConnNotifyDaemon:
         self.loop = GLib.MainLoop()
         self.system_bus = dbus.SystemBus()
         self.state_cache = StateCache()
-        self.notifier = NotificationManager()
         self._warming_up = True
         self._warmup_end = time.time() + WARMUP_SECONDS
         self._monitors = []
@@ -240,12 +301,13 @@ class ConnNotifyDaemon:
             return
 
         log(f"NOTIFY [{event['severity']}] {event['title']}: {event['body']}")
-        self.notifier.send(event["title"], event["body"], event["icon"])
+        EventQueuePublisher.publish(event)
 
     # -- setup --------------------------------------------------------------
 
     def setup(self):
         log("Setting up monitors…")
+        EventQueuePublisher.ensure_queue_dir()
         self._setup_bluetooth()
         self._setup_networkmanager()
         self._setup_wpa_supplicant()
@@ -548,18 +610,37 @@ class ConnNotifyDaemon:
             return str(port)
         return f"{port} ({service})"
 
-    def _format_socket_body(self, proto, lhost, lport, rhost, rport):
+    @staticmethod
+    def _extract_process_info(process_field):
+        if not process_field:
+            return None, None
+
+        name_match = re.search(r'"([^"]+)"', process_field)
+        pid_match = re.search(r"pid=(\d+)", process_field)
+        proc_name = name_match.group(1) if name_match else None
+        pid = pid_match.group(1) if pid_match else None
+        return proc_name, pid
+
+    def _format_socket_body(self, proto, lhost, lport, rhost, rport, process_field=""):
         peer_type = self._classify_ip(rhost)
         local_label = self._port_label(proto, lport)
         remote_label = self._port_label(proto, rport)
-        return "\n".join(
-            [
-                f"Visible peer: {rhost}:{remote_label}",
-                f"Peer type: {peer_type}",
-                f"Local endpoint: {lhost}:{local_label}",
-                "Origin note: last visible hop only; NAT, VPN, proxy, relay, or tunnel may hide the original device.",
-            ]
+        proc_name, pid = self._extract_process_info(process_field)
+        lines = [
+            f"Visible peer: {rhost}:{remote_label}",
+            f"Peer type: {peer_type}",
+            f"Local endpoint: {lhost}:{local_label}",
+        ]
+        if proc_name and pid:
+            lines.append(f"Target process: {proc_name} (pid {pid})")
+        elif proc_name:
+            lines.append(f"Target process: {proc_name}")
+        else:
+            lines.append("Target process: unavailable from ss")
+        lines.append(
+            "Origin note: last visible hop only; NAT, VPN, proxy, relay, or tunnel may hide the original device."
         )
+        return "\n".join(lines)
 
     @staticmethod
     def _parse_ss_lines(output):
@@ -580,7 +661,8 @@ class ConnNotifyDaemon:
                 rport_i = int(rport)
             except ValueError:
                 continue
-            results.append((proto, lhost, lport_i, rhost, rport_i))
+            process_field = " ".join(parts[5:]) if len(parts) > 5 else ""
+            results.append((proto, lhost, lport_i, rhost, rport_i, process_field))
         return results
 
     @staticmethod
@@ -601,7 +683,7 @@ class ConnNotifyDaemon:
     def _poll_sockets(self):
         try:
             listen_out = subprocess.check_output(
-                ["ss", "-Hltnu"], text=True, timeout=5,
+                ["ss", "-Hltnup"], text=True, timeout=5,
                 stderr=subprocess.DEVNULL,
             )
             self._listening_ports = set()
@@ -609,7 +691,7 @@ class ConnNotifyDaemon:
                 self._listening_ports.add((entry[0], entry[2]))
 
             conn_out = subprocess.check_output(
-                ["ss", "-Htnu"], text=True, timeout=5,
+                ["ss", "-Htnup"], text=True, timeout=5,
                 stderr=subprocess.DEVNULL,
             )
         except (subprocess.SubprocessError, OSError) as exc:
@@ -617,19 +699,21 @@ class ConnNotifyDaemon:
             return True
 
         current = set()
-        for proto, lhost, lport, rhost, rport in self._parse_ss_lines(conn_out):
+        for proto, lhost, lport, rhost, rport, process_field in self._parse_ss_lines(conn_out):
             if (proto, lport) not in self._listening_ports:
                 continue
             if self._is_noisy(proto, lhost, lport, rhost, rport):
                 continue
-            conn_key = (proto, lhost, lport, rhost, rport)
+            conn_key = (proto, lhost, lport, rhost, rport, process_field)
             current.add(conn_key)
 
         new_connections = current - self._known_connections
         self._known_connections = current
 
-        for proto, lhost, lport, rhost, rport in new_connections:
-            body = self._format_socket_body(proto, lhost, lport, rhost, rport)
+        for proto, lhost, lport, rhost, rport, process_field in new_connections:
+            body = self._format_socket_body(
+                proto, lhost, lport, rhost, rport, process_field
+            )
             ev = EventNormalizer.normalize(
                 "socket", "inbound",
                 f"sock:{proto}:{rhost}:{rport}->{lhost}:{lport}",
@@ -776,6 +860,7 @@ class ConnNotifyDaemon:
         self.setup()
         log(f"Daemon started (PID {os.getpid()}). "
             f"Warmup for {WARMUP_SECONDS}s — baselining existing state.")
+        GLib.timeout_add_seconds(60, self._prune_queue)
 
         def _quit(signum, _frame):
             sig_name = signal.Signals(signum).name
@@ -791,6 +876,11 @@ class ConnNotifyDaemon:
             pass
         finally:
             log("Daemon stopped.")
+
+    @staticmethod
+    def _prune_queue():
+        EventQueuePublisher.prune()
+        return True
 
 
 # ---------------------------------------------------------------------------
