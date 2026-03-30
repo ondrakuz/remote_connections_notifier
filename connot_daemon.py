@@ -21,9 +21,11 @@ Dependencies (all pre-installed on Ubuntu 24.04 + Plasma):
 """
 
 import glob
+import ipaddress
 import json
 import os
 import signal
+import socket
 import subprocess
 import sys
 import time
@@ -513,6 +515,53 @@ class ConnNotifyDaemon:
         log("Inbound socket poller active (2 s interval).")
 
     @staticmethod
+    def _classify_ip(host):
+        normalized = host.strip("[]")
+        try:
+            ip = ipaddress.ip_address(normalized)
+        except ValueError:
+            return "hostname or unresolved address"
+
+        family = "IPv6" if ip.version == 6 else "IPv4"
+        if ip.is_loopback:
+            scope = "loopback"
+        elif ip.is_link_local:
+            scope = "link-local"
+        elif ip.is_private:
+            scope = "private"
+        elif ip.is_multicast:
+            scope = "multicast"
+        elif ip.is_reserved:
+            scope = "reserved"
+        elif ip.is_unspecified:
+            scope = "unspecified"
+        else:
+            scope = "public"
+        return f"{scope} {family}"
+
+    @staticmethod
+    def _port_label(proto, port):
+        proto_name = "udp" if proto.startswith("udp") else "tcp"
+        try:
+            service = socket.getservbyport(port, proto_name)
+        except OSError:
+            return str(port)
+        return f"{port} ({service})"
+
+    def _format_socket_body(self, proto, lhost, lport, rhost, rport):
+        peer_type = self._classify_ip(rhost)
+        local_label = self._port_label(proto, lport)
+        remote_label = self._port_label(proto, rport)
+        return "\n".join(
+            [
+                f"Visible peer: {rhost}:{remote_label}",
+                f"Peer type: {peer_type}",
+                f"Local endpoint: {lhost}:{local_label}",
+                "Origin note: last visible hop only; NAT, VPN, proxy, relay, or tunnel may hide the original device.",
+            ]
+        )
+
+    @staticmethod
     def _parse_ss_lines(output):
         """Parse ss output lines into (proto, local_addr, local_port,
         remote_addr, remote_port) tuples."""
@@ -580,14 +629,16 @@ class ConnNotifyDaemon:
         self._known_connections = current
 
         for proto, lhost, lport, rhost, rport in new_connections:
+            body = self._format_socket_body(proto, lhost, lport, rhost, rport)
             ev = EventNormalizer.normalize(
                 "socket", "inbound",
                 f"sock:{proto}:{rhost}:{rport}->{lhost}:{lport}",
                 f"Inbound {proto.upper()} connection",
-                f"{rhost}:{rport} → {lhost}:{lport}",
+                body,
                 icon="network-server",
                 severity="warning",
             )
+            log(f"Socket details: {body.replace(chr(10), ' | ')}")
             self.dispatch(ev)
 
         return True  # keep polling
