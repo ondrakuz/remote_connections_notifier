@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-# ConnNotify — launcher script for the user-side connot_notifier.py daemon.
+# Connection Notifier — launcher script for the user-side connot_notifier.py daemon.
 # The root collector is expected to run as a systemd system service.
 # This helper only manages the KDE notifier in the current user session.
 
@@ -27,9 +27,9 @@ if [[ -z "${XDG_RUNTIME_DIR:-}" ]]; then
     export XDG_RUNTIME_DIR="/run/user/$(id -u)"
 fi
 
-LOCK_FILE="$XDG_RUNTIME_DIR/connnotify.lock"
-PID_FILE="$XDG_RUNTIME_DIR/connnotify.pid"
-LOG_FILE="$XDG_RUNTIME_DIR/connnotify.log"
+LOCK_FILE="$XDG_RUNTIME_DIR/connot.lock"
+PID_FILE="$XDG_RUNTIME_DIR/connot.pid"
+LOG_FILE="$XDG_RUNTIME_DIR/connot.log"
 
 # ---------------------------------------------------------------------------
 # Dependency checks
@@ -81,7 +81,7 @@ do_start() {
             exit 0
         fi
 
-        echo "Starting ConnNotify notifier..."
+        echo "Starting Connection Notifier..."
         nohup python3 "$DAEMON_SCRIPT" >>"$LOG_FILE" 2>&1 &
         local new_pid=$!
         echo "$new_pid" > "$PID_FILE"
@@ -97,7 +97,7 @@ do_stop() {
         return 0
     fi
 
-    echo "Stopping ConnNotify notifier (PID $pid)..."
+    echo "Stopping Connection Notifier (PID $pid)..."
     kill "$pid" 2>/dev/null || true
     # Wait briefly for graceful shutdown
     for _ in $(seq 1 10); do
@@ -121,9 +121,9 @@ do_status() {
     local pid
     pid=$(get_running_pid)
     if [[ -n "$pid" ]]; then
-        echo "ConnNotify notifier is running (PID $pid)."
+        echo "Connection Notifier is running (PID $pid)."
     else
-        echo "ConnNotify notifier is not running."
+        echo "Connection Notifier is not running."
         # Clean up stale PID file
         rm -f "$PID_FILE"
     fi
@@ -140,7 +140,7 @@ do_foreground() {
             exit 1
         fi
 
-        echo "Running ConnNotify notifier in foreground (Ctrl+C to stop)..."
+        echo "Running Connection Notifier in foreground (Ctrl+C to stop)..."
         python3 "$DAEMON_SCRIPT"
     ) 9>"$LOCK_FILE"
 }

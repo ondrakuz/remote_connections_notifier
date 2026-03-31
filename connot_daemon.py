@@ -205,13 +205,11 @@ class EventNormalizer:
 class EventPolicy:
     """Annotate events with KDE delivery preferences."""
 
-    PERSISTENT_SOURCES = {"rfkill", "usb_nic", "rfcomm"}
-    PERSISTENT_SOCKET_KINDS = {"burst"}
-    PERSISTENT_BLUETOOTH_KINDS = {
+    HIGHLIGHTED_SOURCES = {"rfkill"}
+    HIGHLIGHTED_SOCKET_KINDS = {"burst"}
+    HIGHLIGHTED_BLUETOOTH_KINDS = {
         "connected",
         "disconnected",
-        "device_added",
-        "device_removed",
     }
 
     @classmethod
@@ -220,21 +218,31 @@ class EventPolicy:
         kind = event["kind"]
         severity = event["severity"]
 
-        persistent = False
-        if source in cls.PERSISTENT_SOURCES:
-            persistent = True
-        elif source == "socket" and kind in cls.PERSISTENT_SOCKET_KINDS:
-            persistent = True
-        elif source == "bluetooth" and kind in cls.PERSISTENT_BLUETOOTH_KINDS:
-            persistent = True
-        elif severity == "warning" and source in {"nfc"} and kind in {"added", "removed"}:
-            persistent = True
+        highlighted = False
+        if source in cls.HIGHLIGHTED_SOURCES:
+            highlighted = True
+        elif source == "socket" and kind in cls.HIGHLIGHTED_SOCKET_KINDS:
+            highlighted = True
+        elif source == "bluetooth" and kind in cls.HIGHLIGHTED_BLUETOOTH_KINDS:
+            highlighted = True
+
+        if highlighted:
+            if severity != "warning":
+                event["severity"] = "warning"
+                severity = "warning"
+            urgency = "critical"
+        elif severity == "warning":
+            urgency = "normal"
+        else:
+            urgency = "low"
+
+        expire_ms = 40000 if highlighted else 5000
 
         event["delivery"] = {
-            "persistent": persistent,
-            "transient": not persistent,
-            "urgency": "critical" if severity == "warning" else "normal",
-            "expire_ms": 12000 if persistent else 5000,
+            "persistent": False,
+            "transient": True,
+            "urgency": urgency,
+            "expire_ms": expire_ms,
             "category": f"device.{source}" if source != "socket" else "network.inbound",
         }
         return event
@@ -344,7 +352,12 @@ class ConnNotifyDaemon:
             return
 
         EventPolicy.annotate(event)
-        log(f"NOTIFY [{event['severity']}] {event['title']}: {event['body']}")
+        delivery = event.get("delivery", {})
+        log(
+            f"EVENT severity={event['severity']} "
+            f"delivery={'persistent' if delivery.get('persistent') else 'transient'} "
+            f"title={event['title']!r} body={event['body']!r}"
+        )
         EventQueuePublisher.publish(event)
 
     # -- setup --------------------------------------------------------------
@@ -766,7 +779,12 @@ class ConnNotifyDaemon:
                 icon="network-server",
                 severity="warning",
             )
-            log(f"Socket details: {body.replace(chr(10), ' | ')}")
+            EventPolicy.annotate(ev)
+            log(
+                "Socket event severity=warning delivery="
+                f"{'persistent' if ev.get('delivery', {}).get('persistent') else 'transient'}: "
+                f"{body.replace(chr(10), ' | ')}"
+            )
             self.dispatch(ev)
 
         return True  # keep polling

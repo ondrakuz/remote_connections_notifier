@@ -1,10 +1,10 @@
-# ConnNotify Operations
+# Connection Notifier Operations
 
 ## Purpose
 
-This document is for operating, verifying, and troubleshooting ConnNotify in day-to-day use.
+This document is for operating, verifying, and troubleshooting Connection Notifier in day-to-day use.
 
-ConnNotify runs as two services:
+Connection Notifier runs as two services:
 
 - `connot-collector.service` as a system service running as root
 - `connot.service` as a user service running in the KDE session
@@ -76,29 +76,31 @@ Installed files:
 Runtime files:
 
 - `/run/connot/events/*.json` for queued events
-- `/run/user/<uid>/connnotify.log` for `connot.sh` notifier runs
+- `/run/user/<uid>/connot.log` for `connot.sh` notifier runs
 - `/run/user/<uid>/connot_notifier.last` for notifier queue position
 
 ## Notification Behavior
 
-Persistent events are intended to remain in KDE history:
+Highlighted transient events stay on screen longer but still disappear automatically:
 
 - socket burst summaries
 - Bluetooth connect/disconnect
-- Bluetooth device add/remove
 - rfkill block/unblock
-- RFCOMM add/remove
-- USB NIC add/remove
 
-Transient events are intended to appear as popups without cluttering KDE history:
+Other transient events are intended to appear as shorter popups:
 
 - individual inbound socket events
+- Bluetooth device add/remove
 - Bluetooth RSSI proximity updates
+- NFC detection and property changes
+- RFCOMM add/remove
+- USB NIC add/remove
 - NetworkManager state/property churn
 - wpa_supplicant state churn
-- NFC property chatter
 
 All events are still logged by the collector and notifier.
+Connection Notifier does not use persistent KDE notifications. Highlighted transient notifications request a 40-second on-screen timeout, while other transient notifications keep the 5-second timeout. Actual display duration still depends on KDE Plasma behavior and user notification settings.
+Highlighted transient notifications use `critical` urgency and are promoted to at least `Warning` severity. Transient warnings use `normal`, and lower-value chatter uses `low`.
 
 ## Example Socket Notification
 
@@ -119,19 +121,19 @@ This describes the last visible network peer and the local process that accepted
 Collector:
 
 ```text
-[2026-03-30 18:21:14] [INFO] CONNOT: Socket details: Visible peer: 203.0.113.20:53214 | Peer type: public IPv4 | Local endpoint: 192.168.1.10:22 (ssh) | Target process: sshd (pid 1234) | Origin note: last visible hop only; NAT, VPN, proxy, relay, or tunnel may hide the original device.
+[2026-03-30 18:21:14] [INFO] CONNOT: Socket event severity=warning delivery=transient: Visible peer: 203.0.113.20:53214 | Peer type: public IPv4 | Local endpoint: 192.168.1.10:22 (ssh) | Target process: sshd (pid 1234) | Origin note: last visible hop only; NAT, VPN, proxy, relay, or tunnel may hide the original device.
 ```
 
 Notifier:
 
 ```text
-[2026-03-30 18:21:14] [INFO] CONNOT-NOTIFIER: Delivered [warning] [transient] Inbound TCP connection: Visible peer: 203.0.113.20:53214
+[2026-03-30 18:21:14] [INFO] CONNOT-NOTIFIER: DELIVERED severity=warning delivery=transient title='Inbound TCP connection' body='Visible peer: 203.0.113.20:53214...'
 ```
 
 Burst summary:
 
 ```text
-[2026-03-30 18:21:18] [INFO] CONNOT-NOTIFIER: Delivered [info] [persistent] Multiple inbound connections: 4 new inbound socket event(s) aggregated.
+[2026-03-30 18:21:18] [INFO] CONNOT-NOTIFIER: DELIVERED severity=warning delivery=transient title='Multiple inbound connections' body='4 new inbound socket event(s) aggregated.'
 ```
 
 ## Known Limits
@@ -174,11 +176,11 @@ sudo ss -Htnup
 sudo ss -Hltnup
 ```
 
-3. If `ss` itself does not show the process, ConnNotify cannot invent it.
+3. If `ss` itself does not show the process, Connection Notifier cannot invent it.
 
 If KDE history is too noisy:
 
-1. Confirm whether the noisy events are marked `persistent` or `transient` in notifier logs.
+1. Confirm whether the noisy events are marked `transient` and whether they are one of the highlighted longer-lived events.
 2. Tighten the delivery policy in `EventPolicy` inside `connot_daemon.py`.
 3. Restart both services after the change.
 

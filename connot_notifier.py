@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-connot_notifier.py — User-side KDE notifier for ConnNotify.
+connot_notifier.py — User-side KDE notifier for Connection Notifier.
 
 Reads normalized events emitted by the root collector from /run/connot/events
 and sends desktop notifications in the current user session.
@@ -27,7 +27,7 @@ class NotificationManager:
     @staticmethod
     def send(title, body, icon="dialog-information", delivery=None):
         delivery = delivery or {}
-        args = ["notify-send", "-a", "ConnNotify", "-i", icon]
+        args = ["notify-send", "-a", "Connection Notifier", "-i", icon]
         args.extend(["-u", delivery.get("urgency", "normal")])
         args.extend(["-t", str(delivery.get("expire_ms", 5000))])
         category = delivery.get("category")
@@ -113,15 +113,17 @@ class EventConsumer:
             if not event:
                 continue
             NotificationManager.send(
-                event.get("title", "ConnNotify event"),
+                event.get("title", "Connection Notifier event"),
                 event.get("body", ""),
                 event.get("icon", "dialog-information"),
                 event.get("delivery", {}),
             )
+            delivery = event.get("delivery", {})
             log(
-                f"Delivered [{event.get('severity', 'info')}] "
-                f"[{'persistent' if event.get('delivery', {}).get('persistent') else 'transient'}] "
-                f"{event.get('title', 'ConnNotify event')}: {event.get('body', '')}"
+                f"DELIVERED severity={event.get('severity', 'info')} "
+                f"delivery={'persistent' if delivery.get('persistent') else 'transient'} "
+                f"title={event.get('title', 'Connection Notifier event')!r} "
+                f"body={event.get('body', '')!r}"
             )
 
     def run(self):

@@ -16,7 +16,7 @@ run_root() {
     fi
 }
 
-echo "=== ConnNotify — Two-component Installer ==="
+echo "=== Connection Notifier — Two-component Installer ==="
 echo "Repo directory: ${SCRIPT_DIR}"
 echo "Install directory: ${INSTALL_DIR}"
 

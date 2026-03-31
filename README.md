@@ -1,10 +1,10 @@
-# Remote Connection Notificator
+# Remote Connection Notifier
 
 Monitors **incoming remote connections** on Linux and sends KDE Plasma desktop notifications.
 
 ## Architecture
 
-ConnNotify now runs as two components:
+Connection Notifier now runs as two components:
 
 - **Collector** (`connot_daemon.py`) — system service running as root, gathers events and writes normalized JSON to `/run/connot/events`
 - **Notifier** (`connot_notifier.py`) — user service running in the desktop session, reads queued events and sends KDE notifications
@@ -26,10 +26,13 @@ This split allows the collector to see target processes more reliably via `ss -p
 
 ## KDE notification policy
 
-- **Persistent in KDE history**: socket burst summaries, Bluetooth connect/disconnect and device add/remove, rfkill changes, RFCOMM add/remove, USB NIC add/remove
-- **Transient only**: ordinary per-connection socket popups, Bluetooth RSSI proximity updates, NetworkManager and wpa_supplicant state churn, NFC property chatter
+- **No persistent KDE notifications**: all notifications are transient and should disappear on their own
+- **Highlighted transient notifications**: socket burst summaries, Bluetooth connect/disconnect, rfkill changes
+- **Other transient notifications**: ordinary per-connection socket popups, Bluetooth device add/remove and RSSI proximity updates, RFCOMM add/remove, USB NIC add/remove, NetworkManager and wpa_supplicant state churn, NFC chatter
 
-All events are still logged; only the KDE history policy differs.
+All events are still logged.
+Highlighted transient notifications use a requested timeout of 40 seconds. Other notifications keep the existing 5-second timeout.
+Highlighted transient notifications are sent with `critical` urgency and are promoted to at least `Warning` severity. Transient warnings are sent with `normal` urgency, and informational chatter uses `low`.
 
 ## Event details
 
@@ -137,6 +140,7 @@ Restart the notifier after KDE session changes. Restart the collector after code
 - If target process names are missing, that usually means `ss -p` did not expose process metadata for that socket, not necessarily that detection is broken.
 - If the notifier seems silent after downtime, remember it baselines existing queue entries on startup to avoid replay storms.
 - If `/run/connot/events` grows unexpectedly, inspect the collector journal first; the collector prunes old queue files periodically.
+- Collector and notifier logs include explicit `severity=` and `delivery=` fields in the log message body.
 
 ## Quick Diagnosis
 

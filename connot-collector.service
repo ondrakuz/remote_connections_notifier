@@ -1,5 +1,5 @@
 [Unit]
-Description=ConnNotify collector - monitors incoming connections as root
+Description=Connection Notifier collector - monitors incoming connections as root
 After=network.target
 Wants=network.target
 

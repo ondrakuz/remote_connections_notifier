@@ -1,8 +1,8 @@
-# ConnNotify Architecture
+# Connection Notifier Architecture
 
 ## Overview
 
-ConnNotify now uses two cooperating processes:
+Connection Notifier now uses two cooperating processes:
 
 - **Collector** (`connot_daemon.py`) runs as root and uses a **GLib main loop** with event-driven monitors and pollers
 - **Notifier** (`connot_notifier.py`) runs in the user session and forwards queued events to KDE
@@ -90,28 +90,31 @@ Event → Cooldown check → Flap damping → Burst aggregation → Notification
 1. Collector writes one JSON event per file into `/run/connot/events`
 2. User notifier polls that directory
 3. Collector-provided delivery metadata marks events as `persistent` or `transient`
-4. Primary desktop notification backend: `notify-send -a "ConnNotify" -i <icon> "<title>" "<body>"`
+4. Primary desktop notification backend: `notify-send -a "Connection Notifier" -i <icon> "<title>" "<body>"`
 5. Fallback: `kdialog --passivepopup`
 
 ## KDE Delivery Policy
 
-Persistent events are intended to remain visible in KDE history:
+No KDE notifications are kept persistent.
+
+Highlighted transient events use a longer timeout:
 
 - socket burst summaries
-- Bluetooth connect/disconnect and device appearance/removal
+- Bluetooth connect/disconnect
 - rfkill state changes
-- RFCOMM add/remove
-- USB NIC add/remove
 
-Transient events are intended to show as popups without cluttering the history:
+Other transient events use the shorter default timeout:
 
 - individual socket connection events
+- Bluetooth device appearance/removal
 - Bluetooth RSSI proximity updates
+- NFC events
+- RFCOMM add/remove
+- USB NIC add/remove
 - NetworkManager property/state churn
 - wpa_supplicant state churn
-- NFC property chatter
 
-The notifier maps this policy to `notify-send` arguments such as urgency, timeout, category, and `--transient`.
+The notifier maps this policy to `notify-send` arguments such as urgency, timeout, category, and `--transient`. Highlighted transient events use `critical` urgency, are promoted to at least `Warning` severity, and use a 40-second requested timeout; other transient events use `normal` or `low` urgency with a 5-second requested timeout.
 
 ## Queue Semantics
 

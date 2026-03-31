@@ -1,5 +1,5 @@
 [Unit]
-Description=ConnNotify notifier - forwards collector events to KDE
+Description=Connection Notifier - forwards collector events to KDE
 After=graphical-session.target
 Wants=dbus.socket
 
