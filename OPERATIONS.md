@@ -17,6 +17,12 @@ Connection Notifier runs as two services:
 ./install.sh --enable
 ```
 
+To remove the installed services later:
+
+```bash
+./install.sh --uninstall
+```
+
 2. Verify the collector is running:
 
 ```bash

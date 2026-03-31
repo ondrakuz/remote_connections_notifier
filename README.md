@@ -114,6 +114,7 @@ For end-to-end monitoring, run the collector as a system service and the notifie
 ```bash
 ./install.sh            # interactive
 ./install.sh --enable   # install + enable + start
+./install.sh --uninstall
 ```
 
 Then manage with:
