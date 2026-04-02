@@ -87,7 +87,7 @@ The installer deploys files to:
 Runtime state is stored in:
 
 - `/run/connot/events` for collector-to-notifier event files
-- `/run/user/<uid>/connnotify.log` for `connot.sh` foreground/background notifier logs
+- `/run/user/<uid>/connot.log` for `connot.sh` foreground/background notifier logs
 - `/run/user/<uid>/connot_notifier.last` for the last delivered queue entry
 
 ## Usage

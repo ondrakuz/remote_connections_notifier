@@ -37,7 +37,7 @@ do_uninstall() {
     run_root rmdir "${INSTALL_DIR}" 2>/dev/null || true
 
     rm -f "${XDG_RUNTIME_DIR:-/run/user/$(id -u)}/connot_notifier.last"
-    rm -f "${XDG_RUNTIME_DIR:-/run/user/$(id -u)}/connnotify.log"
+    rm -f "${XDG_RUNTIME_DIR:-/run/user/$(id -u)}/connot.log"
 
     systemctl --user daemon-reload
     run_root systemctl daemon-reload
