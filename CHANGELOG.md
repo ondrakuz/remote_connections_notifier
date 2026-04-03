@@ -15,6 +15,7 @@
 - promoted all KDE-history notifications to at least Warning severity
 - removed persistent KDE notifications entirely
 - set former persistent notifications to a 40-second transient timeout and kept other notifications at 5 seconds
+- filtered the loopback network interface from NetworkManager notifications
 - added an uninstall option to the installer script
 - made event severity and delivery explicit in collector and notifier log messages
 - updated installer for system and user services

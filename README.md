@@ -66,6 +66,7 @@ This means the script can often identify the local target service or process, bu
 - **Burst aggregation** — >3 socket events in 3s are merged into one notification
 - **Flap damping** — 3+ toggles in 60s suppressed
 - **Noisy traffic filtered** — loopback, link-local, mDNS, LLMNR, SSDP, NBNS, DHCP
+- **Loopback interface filtered** — NetworkManager events for `lo` are ignored
 
 ## Requirements
 

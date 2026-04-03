@@ -484,7 +484,21 @@ class ConnNotifyDaemon:
         60: "Connected-Site", 70: "Connected-Global",
     }
 
+    def _nm_interface_name(self, device_path):
+        try:
+            proxy = self.system_bus.get_object(
+                "org.freedesktop.NetworkManager", device_path
+            )
+            props = dbus.Interface(proxy, "org.freedesktop.DBus.Properties")
+            return str(
+                props.Get("org.freedesktop.NetworkManager.Device", "Interface")
+            )
+        except dbus.exceptions.DBusException:
+            return ""
+
     def _on_nm_device_added(self, device_path):
+        if self._nm_interface_name(device_path) == "lo":
+            return
         ev = EventNormalizer.normalize(
             "networkmanager", "device_added",
             f"nm:devadd:{device_path}",
@@ -495,6 +509,8 @@ class ConnNotifyDaemon:
         self.dispatch(ev)
 
     def _on_nm_device_removed(self, device_path):
+        if self._nm_interface_name(device_path) == "lo":
+            return
         ev = EventNormalizer.normalize(
             "networkmanager", "device_removed",
             f"nm:devrm:{device_path}",
@@ -516,6 +532,8 @@ class ConnNotifyDaemon:
         self.dispatch(ev)
 
     def _on_nm_properties_changed(self, iface, changed, invalidated, path=""):
+        if path and self._nm_interface_name(path) == "lo":
+            return
         interesting = {"Carrier", "ActiveAccessPoint", "State",
                        "Ip4Connectivity", "Ip6Connectivity"}
         for prop in interesting:
