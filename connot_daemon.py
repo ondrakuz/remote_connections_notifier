@@ -236,7 +236,7 @@ class EventPolicy:
         else:
             urgency = "low"
 
-        expire_ms = 40000 if highlighted else 5000
+        expire_ms = 30000 if highlighted else 5000
 
         event["delivery"] = {
             "persistent": False,

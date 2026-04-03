@@ -114,7 +114,7 @@ Other transient events use the shorter default timeout:
 - NetworkManager property/state churn
 - wpa_supplicant state churn
 
-The notifier maps this policy to `notify-send` arguments such as urgency, timeout, category, and `--transient`. Highlighted transient events use `critical` urgency, are promoted to at least `Warning` severity, and use a 40-second requested timeout; other transient events use `normal` or `low` urgency with a 5-second requested timeout.
+The notifier maps this policy to `notify-send` arguments such as urgency, timeout, category, and `--transient`. Highlighted transient events use `critical` urgency, are promoted to at least `Warning` severity, and use a 30-second requested timeout; other transient events use `normal` or `low` urgency with a 5-second requested timeout.
 
 ## Queue Semantics
 

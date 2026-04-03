@@ -105,7 +105,7 @@ Other transient events are intended to appear as shorter popups:
 - wpa_supplicant state churn
 
 All events are still logged by the collector and notifier.
-Connection Notifier does not use persistent KDE notifications. Highlighted transient notifications request a 40-second on-screen timeout, while other transient notifications keep the 5-second timeout. Actual display duration still depends on KDE Plasma behavior and user notification settings.
+Connection Notifier does not use persistent KDE notifications. Highlighted transient notifications request a 30-second on-screen timeout, while other transient notifications keep the 5-second timeout. Actual display duration still depends on KDE Plasma behavior and user notification settings.
 Highlighted transient notifications use `critical` urgency and are promoted to at least `Warning` severity. Transient warnings use `normal`, and lower-value chatter uses `low`.
 
 ## Example Socket Notification

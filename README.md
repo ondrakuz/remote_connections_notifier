@@ -31,7 +31,7 @@ This split allows the collector to see target processes more reliably via `ss -p
 - **Other transient notifications**: ordinary per-connection socket popups, Bluetooth device add/remove and RSSI proximity updates, RFCOMM add/remove, USB NIC add/remove, NetworkManager and wpa_supplicant state churn, NFC chatter
 
 All events are still logged.
-Highlighted transient notifications use a requested timeout of 40 seconds. Other notifications keep the existing 5-second timeout.
+Highlighted transient notifications use a requested timeout of 30 seconds. Other notifications keep the existing 5-second timeout.
 Highlighted transient notifications are sent with `critical` urgency and are promoted to at least `Warning` severity. Transient warnings are sent with `normal` urgency, and informational chatter uses `low`.
 
 ## Event details
