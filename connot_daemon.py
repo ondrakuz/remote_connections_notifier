@@ -230,13 +230,13 @@ class EventPolicy:
             if severity != "warning":
                 event["severity"] = "warning"
                 severity = "warning"
-            urgency = "critical"
+            urgency = "normal"
         elif severity == "warning":
             urgency = "normal"
         else:
             urgency = "low"
 
-        expire_ms = 30000 if highlighted else 5000
+        expire_ms = 20000
 
         event["delivery"] = {
             "persistent": False,
